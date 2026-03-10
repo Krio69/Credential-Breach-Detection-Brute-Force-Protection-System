@@ -76,30 +76,25 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # Use dj-database-url to pull from Vercel's Environment Variables
 # Database configuration
 # This prioritizes the DATABASE_URL environment variable from Vercel/Neon
-DATABASES = {
-    'default': dj_database_url.config(
-        default=os.environ.get('DATABASE_URL'),
-        conn_max_age=600,
-        conn_health_checks=True,
-        # Force Django to use the modern 'psycopg' (v3) driver
-        engine='django.db.backends.postgresql' 
-    )
-}
+# Database configuration
+DATABASE_URL = os.environ.get('DATABASE_URL')
 
-# Add a fallback for local development if DATABASE_URL is missing
-if not os.environ.get('DATABASE_URL'):
-    DATABASES['default'] = {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+if DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=DATABASE_URL,
+            conn_max_age=600,
+            conn_health_checks=True,
+            engine='django.db.backends.postgresql' 
+        )
     }
-
-# Password validation
-AUTH_PASSWORD_VALIDATORS = [
-    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
-]
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # Internationalization
 LANGUAGE_CODE = 'en-us'
