@@ -86,62 +86,49 @@ def login_view(request):
             user_auth = authenticate(request, username=username, password=password)
             
             if user_auth:
-                # Check if this is a known IP for this specific user
-                known_ip = SecurityAuditLog.objects.filter(
-                    user=user_auth, ip_address=client_ip, status='SUCCESS'
-                ).exists()
-                
-                if not known_ip:
-                    # Trigger MFA for unknown IP
-                    otp = str(random.randint(100000, 999999))
-                    request.session['mfa_required'] = True
-                    request.session['mfa_otp'] = otp
-                    request.session['mfa_user_id'] = user_auth.pk
-                    request.session['mfa_user_backend'] = user_auth.backend
-                    
-                    # --- SEND OTP VIA EMAIL ---
-                    subject = "CredShield: MFA Verification Code"
-                    email_body = f"Hello {user_auth.username},\n\nA login attempt was made from an unknown IP ({client_ip}).\n\nYour verification code is: {otp}\n\nIf this was not you, please change your password immediately."
-                    
-                    try:
-                        send_mail(
-                            subject,
-                            email_body,
-                            settings.EMAIL_HOST_USER,
-                            [user_auth.email],
-                            fail_silently=False,
-                        )
-                    except Exception as e:
-                        # Fallback to console log if email fails, but continue to verification page
-                        print(f"[CredShield MFA ERROR] Could not send email: {e}")
-                    
-                    return redirect('mfa_verify')
-
-                # Standard Login for known IPs
+                # Standard Login logic...
                 user.failed_attempts = 0
                 user.save()
+                
+                # Log Success
+                SecurityAuditLog.objects.create(
+                    user=user_auth, ip_address=client_ip, 
+                    user_agent=request.META.get('HTTP_USER_AGENT', 'unknown'), status='SUCCESS'
+                )
+
                 login(request, user_auth)
                 request.session['session_user_agent'] = request.META.get('HTTP_USER_AGENT', '')
-                
-                # Check for breaches on successful login
-                leak_count = check_password_breach(password)
-                if leak_count > 0:
-                    request.session['security_warning'] = f"Warning: Password found in {leak_count} breaches!"
-                
                 return redirect("success")
+            
             else:
                 user.failed_attempts += 1
-                user.save()
                 
-                # Jailing logic
+                # Check if we should lock it NOW
+                if user.failed_attempts >= 5:
+                    user.lock_account() # This sets is_locked=True and records the time
+                    message = "Account locked due to multiple failed attempts. Try again in 5 minutes."
+                else:
+                    user.save() # Just increment the count
+                    attempts_left = max(0, 5 - user.failed_attempts)
+                    message = f"Invalid credentials. {attempts_left} attempts left."
+
+                # 1. LOG THE FAILURE for the Security Audit Log
+                SecurityAuditLog.objects.create(
+                    user=user,
+                    ip_address=client_ip,
+                    user_agent=request.META.get('HTTP_USER_AGENT', 'unknown'),
+                    status='FAILED'
+                )
+                
+                # 2. JAILING LOGIC (IP-based)
                 total_ip_failures = SecurityAuditLog.objects.filter(ip_address=client_ip, status='FAILED').count()
                 if total_ip_failures > 10:
                     BlacklistedIP.objects.get_or_create(ip_address=client_ip, defaults={'reason': 'Brute force attempt'})
                 
-                return render(request, "login.html", {"message": "Invalid credentials."})
+                return render(request, "login.html", {"message": message})
                 
         except CustomUser.DoesNotExist:
-            message = "User does not exist."
+            message = "Invalid credentials." # Secure: don't reveal if user exists
 
     return render(request, "login.html", {"message": message})
 

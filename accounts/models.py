@@ -10,8 +10,22 @@ class CustomUser(AbstractUser):
     # Feature: Security Score Decay — tracks when the password was last changed
     last_password_change = models.DateField(null=True, blank=True)
 
+    def save(self, *args, **kwargs):
+        # Automatically lock the account if failures exceed 5
+        if self.failed_attempts >= 5 and not self.is_locked:
+            self.is_locked = True
+        
+        # If we are incrementing failed attempts, update the timestamp
+        # This is CRITICAL for the lock timer to work
+        if self.pk: # Only if user already exists
+            original = CustomUser.objects.get(pk=self.pk)
+            if self.failed_attempts > original.failed_attempts:
+                self.last_failed_attempt = now()
+                
+        super().save(*args, **kwargs)
     def lock_account(self):
         self.is_locked = True
+        self.last_failed_attempt = now()
         self.save()
 
     def unlock_account(self):
