@@ -1,25 +1,22 @@
-"""
-WSGI config for core project.
-
-It exposes the WSGI callable as a module-level variable named ``application``.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/5.2/howto/deployment/wsgi/
-"""
-
 import os
 from django.core.wsgi import get_wsgi_application
 from django.core.management import call_command
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
 
-# Initialize the application first
+# Initialize application
 application = get_wsgi_application()
 app = application
 
-# Run migrations safely only if the app is starting up
+# 1. Run migrations
 try:
-    print("Checking for database migrations...")
     call_command('migrate', '--noinput')
 except Exception as e:
-    print(f"Migration error (this is common during concurrent starts): {e}")
+    print(f"Migration error: {e}")
+
+# 2. Run collectstatic to fix the broken Admin CSS
+try:
+    call_command('collectstatic', '--noinput')
+    print("Static files collected successfully.")
+except Exception as e:
+    print(f"Static collection error: {e}")
