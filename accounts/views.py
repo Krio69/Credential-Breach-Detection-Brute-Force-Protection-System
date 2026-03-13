@@ -107,7 +107,8 @@ def login_view(request):
                     # Send the mail
                     send_mail(
                         'New IP Verification | CredShield',
-                        f'We detected a login from a new IP ({client_ip}). Your verification code is: {otp}',
+                        f'We detected a login from a new IP ({client_ip}). Your verification code is: {otp}'
+                        f'If this was you, please enter the code to complete login. If not, please secure your account immediately.',
                         settings.EMAIL_HOST_USER,
                         [user_auth.email],
                         fail_silently=False,
