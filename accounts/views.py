@@ -86,7 +86,36 @@ def login_view(request):
             user_auth = authenticate(request, username=username, password=password)
             
             if user_auth:
-                # Standard Login logic...
+                # --- MFA TRIGGER LOGIC START ---
+                # Check if this specific user has ever logged in from this IP successfully
+                known_ip = SecurityAuditLog.objects.filter(
+                    user=user_auth, 
+                    ip_address=client_ip, 
+                    status='SUCCESS'
+                ).exists()
+
+                if not known_ip:
+                    # Generate 6-digit OTP
+                    otp = str(random.randint(100000, 999999))
+                    
+                    # Store data in session to be picked up by mfa_verify_view
+                    request.session['mfa_required'] = True
+                    request.session['mfa_otp'] = otp
+                    request.session['mfa_user_id'] = user_auth.pk
+                    request.session['mfa_user_backend'] = user_auth.backend
+                    
+                    # Send the mail
+                    send_mail(
+                        'New IP Verification | CredShield',
+                        f'We detected a login from a new IP ({client_ip}). Your verification code is: {otp}',
+                        settings.EMAIL_HOST_USER,
+                        [user_auth.email],
+                        fail_silently=False,
+                    )
+                    return redirect('mfa_verify')
+                # --- MFA TRIGGER LOGIC END ---
+
+                # Standard Login logic (runs only if IP is known)
                 user.failed_attempts = 0
                 user.save()
                 
@@ -105,10 +134,10 @@ def login_view(request):
                 
                 # Check if we should lock it NOW
                 if user.failed_attempts >= 5:
-                    user.lock_account() # This sets is_locked=True and records the time
+                    user.lock_account() 
                     message = "Account locked due to multiple failed attempts. Try again in 5 minutes."
                 else:
-                    user.save() # Just increment the count
+                    user.save() 
                     attempts_left = max(0, 5 - user.failed_attempts)
                     message = f"Invalid credentials. {attempts_left} attempts left."
 
@@ -128,7 +157,7 @@ def login_view(request):
                 return render(request, "login.html", {"message": message})
                 
         except CustomUser.DoesNotExist:
-            message = "Invalid credentials." # Secure: don't reveal if user exists
+            message = "Invalid credentials." 
 
     return render(request, "login.html", {"message": message})
 
